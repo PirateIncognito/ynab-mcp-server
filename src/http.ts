@@ -4,6 +4,7 @@ import * as ynab from "ynab";
 
 import { createHttpServer, isLoopbackAddress } from "./httpServer.js";
 import { isReadOnly } from "./registry.js";
+import { auditSinkFromEnv } from "./auditFile.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -29,6 +30,7 @@ try {
   server = createHttpServer({
     api: new ynab.API(token),
     readOnly,
+    audit: auditSinkFromEnv(),
     version,
     allowedOrigins: list(process.env.YNAB_MCP_ALLOWED_ORIGINS),
     allowedHosts: list(process.env.YNAB_MCP_ALLOWED_HOSTS),

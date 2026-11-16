@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type * as ynab from "ynab";
 
 import { registerAll } from "./registry.js";
+import type { AuditSink } from "./audit.js";
 
 // Tool calls are small JSON-RPC messages; refuse anything far larger.
 export const MAX_BODY_BYTES = 1024 * 1024;
@@ -15,6 +16,8 @@ export interface HttpServerOptions {
   /** One client shared by every request, so per-client caches (plan settings) persist. */
   api: ynab.API;
   readOnly?: boolean;
+  /** Record every tool call; see `RegisterOptions.audit`. */
+  audit?: AuditSink;
   version: string;
   /**
    * Browser origins allowed to call /mcp (e.g. "https://app.example.com").
@@ -139,7 +142,7 @@ function sendBodyTooLarge(req: IncomingMessage, res: ServerResponse) {
  * Host is not localhost, 127.0.0.1, [::1] or one of allowedHosts.
  */
 export function createHttpServer(options: HttpServerOptions): Server {
-  const { api, readOnly = false, version } = options;
+  const { api, readOnly = false, audit, version } = options;
   const allowedOrigins = new Set((options.allowedOrigins ?? []).map(normalizeOrigin));
   const allowedHostnames = new Set([...LOOPBACK_HOSTNAMES, ...(options.allowedHosts ?? []).map(normalizeHostname)]);
 
@@ -184,7 +187,7 @@ export function createHttpServer(options: HttpServerOptions): Server {
     }
 
     const server = new McpServer({ name: "ynab-mcp-server", version });
-    registerAll(server, api, { readOnly });
+    registerAll(server, api, { readOnly, audit });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

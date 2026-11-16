@@ -27,6 +27,7 @@ import * as SuggestCategoriesTool from "./tools/SuggestCategoriesTool.js";
 import * as ApplyCategorySuggestionsTool from "./tools/ApplyCategorySuggestionsTool.js";
 import { getErrorMessage, toolError } from "./tools/errorUtils.js";
 import { configuredPlanId, describeMissingPlan } from "./tools/planId.js";
+import { auditedCall, type AuditSink } from "./audit.js";
 
 /** A tool module as exported by every file in src/tools. */
 interface ToolModule {
@@ -110,6 +111,8 @@ export function isReadOnly(value: string | undefined): boolean {
 export interface RegisterOptions {
   /** Omit tools that write to YNAB. */
   readOnly?: boolean;
+  /** Record every tool call here; write tools are refused if their intent cannot be recorded. */
+  audit?: AuditSink;
 }
 
 interface InputSchema {
@@ -250,7 +253,13 @@ export function registerTools(server: ToolRegistrar, api: ynab.API, entries: Too
       description: module.description,
       inputSchema,
       annotations: buildAnnotations(tool),
-    }, async (input: any) => executeTool(module, omitNullOptionalInputs(input, module.inputSchema), api));
+    }, async (input: any) => {
+      const cleaned = omitNullOptionalInputs(input, module.inputSchema);
+      const run = () => executeTool(module, cleaned, api);
+      return options.audit
+        ? auditedCall(options.audit, { tool: module.name, writes: tool.writes, input: cleaned, api, run })
+        : run();
+    });
   }
 
   return selected.length;

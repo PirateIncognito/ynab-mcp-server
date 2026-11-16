@@ -58,6 +58,7 @@ Environment variables:
 | `YNAB_AI_CATEGORIZATION` | no | Set to `"true"` together with `TYPESAFE_API_KEY` to expose the opt-in suggestion tool. |
 | `YNAB_AI_TYPICAL_PAYEES` | no | Set to `"true"` to send each category's most frequent payee names from the last 12 months with each model request. Off by default because it discloses aggregated payee history to TypeSafe. |
 | `YNAB_READ_ONLY` | no | Set to `"true"` (case-insensitive; surrounding whitespace is ignored) to remove tools that write to YNAB, in the stdio server, the HTTP server and the Worker. |
+| `YNAB_AUDIT_LOG` | no | stdio and HTTP servers only. Path to a JSON-lines file recording every tool call (a leading `~/` is expanded). See [Audit log](#audit-log). |
 | `YNAB_MCP_HOST`, `PORT` | no | HTTP server only. Address and port to listen on; default `127.0.0.1` and `3000`. |
 | `YNAB_MCP_ALLOWED_ORIGINS` | no | HTTP server only. Comma-separated browser origins allowed to call `/mcp` (e.g. `https://app.example.com`). Each entry is reduced to scheme, host and port, so a trailing slash is ignored. Empty by default, which refuses every request that carries an `Origin` header. |
 | `YNAB_MCP_ALLOWED_HOSTS` | no | HTTP server only. Comma-separated extra `Host` hostnames accepted while listening on a loopback address, for a reverse proxy on the same machine that forwards the client's `Host` (e.g. `mcp.example.com`). |
@@ -227,6 +228,38 @@ account
 
 Setting `YNAB_READ_ONLY` to `"true"` drops every YNAB write tool from the tool
 list, which is worth considering for a connector you will mostly use on a phone.
+
+## Audit log
+
+Set `YNAB_AUDIT_LOG` to a file path and the stdio and HTTP servers record every
+tool call there, one JSON object per line:
+
+- **Reads** get one `read` line: the tool, its inputs, whether it succeeded and
+  the response size. The response itself is not logged.
+- **Writes** get a `write.intent` line before YNAB is touched, with the inputs
+  and a `before` snapshot of the transactions or categories about to change
+  (as YNAB reports them, amounts in milliunits), then a `write.result` line
+  with YNAB's full response. Both lines share an `id`. Snapshots cost extra
+  API requests, so at most 25 transactions are looked up one by one; a bulk
+  approval uses a single request.
+- **A write is refused** if its intent line cannot be written, so YNAB never
+  changes without a record. A failed snapshot is recorded but does not block
+  the write.
+
+The directory is created `0700` and the file `0600`. Values under keys that
+look like secrets (`token`, `authorization`, `apiKey`, ...) are masked. Each
+line carries `prev`, the SHA-256 of the line before it, so an edited or deleted
+line is detectable:
+
+```bash
+npx ynab-audit-verify ~/ynab-audit/audit.jsonl   # or node dist/auditVerify.js <file>
+```
+
+The log holds payees, amounts and account names. Keep it on an encrypted disk,
+outside the repository and any synced or shared folder, and rotate or prune it
+yourself; the server only ever appends. The hash chain detects tampering after
+the fact but cannot stop it: for that, copy the file somewhere the server's
+user cannot write, or on Linux mark it append-only with `sudo chattr +a`.
 
 ## Tools
 
