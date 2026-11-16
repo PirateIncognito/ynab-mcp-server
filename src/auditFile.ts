@@ -50,6 +50,11 @@ export class FileAuditSink implements AuditSink {
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
     fs.closeSync(fs.openSync(this.file, "a", 0o600));
     fs.chmodSync(this.file, 0o600);
+    // Some filesystems (VMware/VirtualBox shared folders, SMB, FAT) accept chmod but ignore it.
+    const mode = fs.statSync(this.file).mode & 0o777;
+    if (mode !== 0o600) {
+      console.error(`audit: ${this.file} is mode ${mode.toString(8)}, not 600; this filesystem ignores permissions, so other users may be able to read the log`);
+    }
     const last = lastLine(this.file);
     this.prev = last === undefined ? GENESIS_HASH : sha256(last);
   }
